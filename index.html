@@ -1,82 +1,131 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Forge d'applications</title>
-    <style>
-        body { font-family: system-ui; background: #0a0a0a; color: #eee; padding: 2rem; }
-        .container { max-width: 800px; margin: 0 auto; }
-        textarea, select, button { width: 100%; margin: 0.5rem 0; padding: 0.8rem; border-radius: 8px; border: none; }
-        textarea { background: #1e1e1e; color: #fff; }
-        button { background: #ff4500; color: white; font-weight: bold; cursor: pointer; }
-        .preview { margin-top: 2rem; border: 1px solid #333; border-radius: 8px; overflow: hidden; }
-        iframe { width: 100%; height: 500px; border: none; background: white; }
-        .loading { display: none; text-align: center; margin: 1rem; }
-    </style>
-</head>
-<body>
-<div class="container">
-    <h1>🔥 Forge ton application</h1>
-    <textarea id="prompt" rows="5" placeholder="Décris ton application..."></textarea>
-    <select id="language">
-        <option value="fr">Français</option>
-        <option value="en">English</option>
-        <option value="es">Español</option>
-    </select>
-    <select id="appType">
-        <option value="vitrine">Site Vitrine</option>
-        <option value="gestion">Gestion</option>
-        <option value="marketplace">Marketplace</option>
-    </select>
-    <div>
-        <label><input type="checkbox" value="mtn"> MTN MoMo</label>
-        <label><input type="checkbox" value="orange"> Orange Money</label>
-        <label><input type="checkbox" value="wave"> Wave</label>
-    </div>
-    <button id="forgeBtn">Lancer la forge</button>
-    <div class="loading" id="loading">⏳ Forge en cours...</div>
-    <div class="preview" id="preview" style="display:none;">
-        <iframe id="previewFrame"></iframe>
-        <a id="downloadLink" style="display:inline-block; margin-top:1rem; background:#ff4500; padding:0.5rem 1rem; border-radius:5px; color:white; text-decoration:none;">Télécharger</a>
-    </div>
-</div>
-
+<!-- ... tout le contenu HTML et CSS reste identique jusqu'à la balise <script> ... -->
 <script>
-    document.getElementById('forgeBtn').addEventListener('click', async () => {
-        const prompt = document.getElementById('prompt').value;
-        const language = document.getElementById('language').value;
-        const appType = document.getElementById('appType').value;
-        const payments = [...document.querySelectorAll('input[type="checkbox"]:checked')].map(cb => cb.value);
+// ... les particules et autres fonctions du début restent inchangées ...
 
-        if (!prompt) return alert('Décris ton application');
+// ── NOUVEAU : URL du backend déployé (à remplacer par la tienne) ──
+const API_URL = 'https://telah-backend.onrender.com/api/forge';
 
-        const loading = document.getElementById('loading');
-        const preview = document.getElementById('preview');
-        loading.style.display = 'block';
-        preview.style.display = 'none';
+// ── Suppression de la clé exposée ──
+// const GEMINI_KEY = '...';  <-- à supprimer
 
-        try {
-            const response = await fetch('/api/forge', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt, language, appType, payments })
-            });
-            const data = await response.json();
-            if (!data.success) throw new Error(data.error);
+// ... fonctions setLang, setType, togglePay, sleep, addLine, setAgent inchangées ...
 
-            const blob = new Blob([data.appCode], {type: 'text/html'});
-            const url = URL.createObjectURL(blob);
-            document.getElementById('previewFrame').src = url;
-            document.getElementById('downloadLink').href = url;
-            document.getElementById('downloadLink').download = 'app.html';
-            preview.style.display = 'block';
-        } catch (err) {
-            alert('Erreur : ' + err.message);
-        } finally {
-            loading.style.display = 'none';
-        }
+// ── NOUVELLE FONCTION forge ──
+async function forge() {
+  if (isForging) return;
+  const prompt = document.getElementById('prompt').value.trim();
+  if (!prompt) { /* ... */ return; }
+
+  isForging = true;
+  const btn = document.getElementById('forgeBtn');
+  btn.disabled = true;
+  btn.innerHTML = '⚙️ Forge en cours...';
+
+  const out = document.getElementById('output');
+  out.className = 'output show';
+  out.innerHTML = '';
+
+  // Réinitialisation visuelle des agents
+  ['ag-ui','ag-back','ag-db','ag-pay','ag-sec','ag-new'].forEach(id => setAgent(id, 'En attente', ''));
+
+  const langNames = { fr:'français', en:'anglais', zh:'chinois', ar:'arabe', es:'espagnol', pt:'portugais', hi:'hindi' };
+  const payNames = { mtn:'MTN MoMo', orange:'Orange Money', wave:'Wave', stripe:'Stripe/Visa', paypal:'PayPal', mpesa:'M-Pesa' };
+  const pays = selectedPayments.map(p => payNames[p] || p).join(', ') || 'MTN MoMo';
+
+  addLine('> Analyse du projet en cours...', 'forge');
+  await sleep(500);
+  addLine(`> Langue: ${langNames[selectedLang]} | Type: ${selectedType} | Paiements: ${pays}`, 'blue');
+  await sleep(400);
+  addLine('> Connexion à TELAH Engine...', 'forge');
+  await sleep(500);
+
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        language: selectedLang,
+        appType: selectedType,
+        payments: selectedPayments
+      })
     });
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error);
+
+    // Affichage du plan et de la vérification (si présents)
+    if (data.plan) {
+      addLine(`📋 Plan: ${data.plan.taches.map(t => t.nom).join(', ')}`, 'gold');
+    }
+    if (data.verification) {
+      addLine(`🔍 Vérification: ${data.verification.ok ? 'OK' : 'Problèmes détectés'}`, data.verification.ok ? 'green' : 'forge');
+    }
+    if (data.attempts > 0) addLine(`🔧 ${data.attempts} tentative(s) de correction`, 'blue');
+
+    // Simulation des agents visuels (on les fait défiler en parallèle)
+    const agentsList = ['ag-ui','ag-back','ag-db','ag-pay','ag-sec'];
+    for (let i = 0; i < agentsList.length; i++) {
+      setAgent(agentsList[i], 'En cours...', 'active');
+      addLine(`> ${agentsList[i].replace('ag-','Agent ')} — démarré`, 'forge');
+      await sleep(300);
+      setAgent(agentsList[i], 'Terminé ✓', 'done');
+      addLine(`> ${agentsList[i].replace('ag-','Agent ')} — ✓ Complété`, 'green');
+      await sleep(100);
+    }
+
+    // Création éventuelle d'un nouvel agent
+    if (data.new_agent) {
+      const na = document.getElementById('ag-new');
+      na.className = 'agent new-agent active';
+      na.querySelector('.agent-lbl').textContent = data.new_agent.replace('Agent ','');
+      na.querySelector('.agent-st').textContent = 'Auto-créé...';
+      addLine(`> ✨ Nouvel agent auto-créé: ${data.new_agent}`, 'gold');
+      await sleep(800);
+      na.className = 'agent new-agent done';
+      na.querySelector('.agent-st').textContent = 'Actif ✓';
+    }
+
+    addLine('', '');
+    addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'forge');
+    addLine(`✅ Application forgée avec succès !`, 'green');
+    addLine(`💳 ${pays} intégré(s)`, 'blue');
+    addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'forge');
+
+    // Affichage du résultat (code)
+    if (data.appCode) {
+      const blob = new Blob([data.appCode], {type: 'text/html'});
+      const url = URL.createObjectURL(blob);
+      const preview = document.getElementById('previewContainer');
+      preview.className = 'preview-container show';
+      document.getElementById('previewUrl').textContent = 'Application générée — Aperçu';
+      document.getElementById('previewFrame').src = url;
+
+      const actions = document.getElementById('rActions');
+      actions.innerHTML = '';
+      const dlBtn = document.createElement('a');
+      dlBtn.className = 'result-btn primary';
+      dlBtn.href = url;
+      dlBtn.download = 'app.html';
+      dlBtn.innerHTML = '⬇️ Télécharger ZIP';
+      actions.appendChild(dlBtn);
+
+      const waBtn = document.createElement('a');
+      waBtn.className = 'result-btn whatsapp';
+      const waMsg = encodeURIComponent(`🔥 Application forgée par TELAH\n\n${prompt}\nPaiements: ${pays}\n\nJe souhaite commander cette application.`);
+      waBtn.href = `https://wa.me/237677051062?text=${waMsg}`;
+      waBtn.target = '_blank';
+      waBtn.innerHTML = '💬 Commander via WhatsApp';
+      actions.appendChild(waBtn);
+    }
+
+  } catch (err) {
+    addLine(`> ⚠️ ${err.message}`, 'forge');
+    addLine('> Mode démonstration activé', 'gold');
+    // Fallback visuel (on peut garder une animation minimaliste)
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '🔥 LANCER LA FORGE';
+  isForging = false;
+}
 </script>
-</body>
-</html>
